@@ -21,21 +21,25 @@ const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const SUBMISSIONS_FILE = path.join(DATA_DIR, 'submissions.json');
 
 // Ensure fallback JSON folder and files exist
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-if (!fs.existsSync(USERS_FILE)) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify([
-    {
-      id: 'demo-user-1',
-      name: 'Nguyễn Văn A',
-      email: 'demo@speaking.ai',
-      createdAt: new Date().toISOString()
-    }
-  ], null, 2));
-}
-if (!fs.existsSync(SUBMISSIONS_FILE)) {
-  fs.writeFileSync(SUBMISSIONS_FILE, JSON.stringify([], null, 2));
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(USERS_FILE)) {
+    fs.writeFileSync(USERS_FILE, JSON.stringify([
+      {
+        id: 'demo-user-1',
+        name: 'Nguyễn Văn A',
+        email: 'demo@speaking.ai',
+        createdAt: new Date().toISOString()
+      }
+    ], null, 2));
+  }
+  if (!fs.existsSync(SUBMISSIONS_FILE)) {
+    fs.writeFileSync(SUBMISSIONS_FILE, JSON.stringify([], null, 2));
+  }
+} catch (e) {
+  console.warn('⚠️ Environment filesystem is read-only (Serverless mode). Skipping local file creation.');
 }
 
 // Helpers to read/write fallback JSON data
@@ -49,7 +53,11 @@ function readJSON(filePath) {
 }
 
 function writeJSON(filePath, data) {
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('⚠️ Unable to write to filesystem (Serverless mode).', e.message);
+  }
 }
 
 // Mongoose Models & Schemas
@@ -311,6 +319,10 @@ app.get('/api/dictionary/:word', async (req, res) => {
   return res.status(404).json({ error: 'Word not found in dictionary' });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Backend Server AI Speaking đang chạy tại: http://localhost:${PORT}`);
-});
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`🚀 Backend Server AI Speaking đang chạy tại: http://localhost:${PORT}`);
+  });
+}
+
+export default app;

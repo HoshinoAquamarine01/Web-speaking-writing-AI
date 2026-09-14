@@ -79,11 +79,12 @@ export async function fetchWordDefinition(word: string): Promise<DictionaryEntry
 
   // 3. Fetch from API (backend proxy or direct)
   try {
+    const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
     let res: Response | null = null;
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2000);
-      res = await fetch(`http://localhost:3001/api/dictionary/${encodeURIComponent(cleanWord)}`, {
+      res = await fetch(`${API_BASE}/dictionary/${encodeURIComponent(cleanWord)}`, {
         signal: controller.signal
       });
       clearTimeout(timeoutId);
