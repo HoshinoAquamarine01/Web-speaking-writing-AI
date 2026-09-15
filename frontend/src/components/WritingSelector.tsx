@@ -23,7 +23,7 @@ interface WritingSelectorProps {
 }
 
 export const WritingSelector: React.FC<WritingSelectorProps> = ({ onStartWriting }) => {
-  const { user } = useAuth();
+  const { user, updateApiKey } = useAuth();
   const [examType, setExamType] = useState<ExamType>('TOEIC');
   const [selectedPart, setSelectedPart] = useState<number | string>('all');
   const [activeMode, setActiveMode] = useState<'preset' | 'custom' | 'ai_gen'>('preset');
@@ -68,7 +68,7 @@ export const WritingSelector: React.FC<WritingSelectorProps> = ({ onStartWriting
       prompt: customPrompt.trim(),
       minWords: customMinWords,
       timeLimitMinutes: customTimeLimit,
-      sampleAnswer: 'Sample answer will be generated during evaluation based on your essay topic.'
+      sampleAnswer: `Dear Management / Examiner,\n\nI am writing to express my perspective regarding ${customTitle.trim() || 'this topic'}.\n\nFirst, addressing this matter effectively requires a strategic approach. It is essential to ensure that clear guidelines are established to maintain productivity and quality. Furthermore, providing adequate training and resources empowers individuals to overcome challenges and achieve optimal results.\n\nSecond, ongoing feedback and open communication play a vital role in long-term success. By fostering collaboration and continuous learning, we can achieve sustainable progress.\n\nThank you for considering this proposal.\n\nBest regards,\nCandidate`
     };
     onStartWriting(customQ);
   };
@@ -343,6 +343,26 @@ export const WritingSelector: React.FC<WritingSelectorProps> = ({ onStartWriting
               />
             </div>
 
+            {/* API Key Input Section for Real AI Generation */}
+            <div className="bg-purple-950/40 border border-purple-500/30 p-4 rounded-2xl space-y-2">
+              <label className="block text-xs font-bold text-purple-300 flex items-center justify-between">
+                <span>🔑 OpenAI / AI API Key (Tùy chọn cho AI thực tế):</span>
+                <span className="text-[10px] text-purple-400 font-normal">
+                  {user?.apiKey ? '✅ Đã lưu API Key' : 'Tự động tạo hoặc dùng API Key riêng'}
+                </span>
+              </label>
+              <input
+                type="password"
+                placeholder="Nhập sk-... (OpenAI / Gemini API Key) để AI tạo đề 100% thời gian thực"
+                value={user?.apiKey || ''}
+                onChange={(e) => updateApiKey(e.target.value)}
+                className="w-full bg-slate-950 border border-purple-500/40 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 font-mono focus:outline-none focus:border-purple-400"
+              />
+              <p className="text-[11px] text-slate-400">
+                💡 Khi nhập API Key, hệ thống sẽ kết nối trực tiếp đến mô hình LLM để tự động sáng tạo đề thi Writing, bài luận mẫu & từ vựng hoàn toàn mới không rập khuôn.
+              </p>
+            </div>
+
             <button
               type="submit"
               disabled={isGenerating}
@@ -350,11 +370,11 @@ export const WritingSelector: React.FC<WritingSelectorProps> = ({ onStartWriting
             >
               {isGenerating ? (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin" /> Đang Tạo Đề Thi Writing...
+                  <Loader2 className="w-5 h-5 animate-spin" /> AI Đang Tạo Đề Thi Writing Mới...
                 </>
               ) : (
                 <>
-                  Tạo Đề Thi Writing Mới & Soạn Thảo Ngay
+                  <Bot className="w-4 h-4" /> AI Tạo Đề Thi Writing Mới & Soạn Thảo Ngay
                 </>
               )}
             </button>

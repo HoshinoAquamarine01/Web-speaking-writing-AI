@@ -86,7 +86,7 @@ function MainApp() {
       id: `full-exam-${Date.now()}`,
       examType: fullExamType,
       part: 1,
-      partTitle: `Full Mock Test (${fullExamType})`,
+      partTitle: `Full Exam Test (${fullExamType})`,
       title: `Bài Thi Thử Trọn Bộ Full ${fullExamType} Speaking (${partResults.length} Parts)`,
       prompt: partResults.map((r, i) => `[Part ${i + 1} - ${r.question.partTitle}]: ${r.question.title}`).join('\n'),
       prepTimeSeconds: 45,

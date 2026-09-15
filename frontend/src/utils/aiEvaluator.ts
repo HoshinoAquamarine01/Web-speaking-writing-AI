@@ -1,256 +1,334 @@
 import type { ExamType, EvaluationResult, Question } from '../types';
 
+export function getEffectiveSpeakingSampleAnswer(examType: ExamType, question: Question | { title: string; prompt: string }): string {
+  const qObj = question as any;
+  if (
+    qObj.sampleAnswer &&
+    !qObj.sampleAnswer.toLowerCase().includes('will be generated') &&
+    !qObj.sampleAnswer.toLowerCase().includes('sample answer will')
+  ) {
+    return qObj.sampleAnswer;
+  }
+  const title = qObj.title || 'this designated topic';
+  if (examType === 'TOEIC') {
+    return `In my opinion, addressing ${title} effectively requires a structured and professional strategy. First and foremost, clear communication ensures that all team members are aligned with corporate goals. Secondly, investing in ongoing training and modern technology significantly boosts operational productivity. Therefore, prioritizing these key factors yields long-term success for any organization.`;
+  } else {
+    return `I would like to elaborate on ${title}, which is a subject of great relevance today. From my perspective, this issue encompasses several key aspects. Firstly, technological advancements have fundamentally transformed how individuals engage with this area. Secondly, establishing clear guidelines helps balance innovation with personal responsibility. Overall, maintaining a proactive and informed approach is essential for achieving optimal outcomes.`;
+  }
+}
+
 export async function evaluateSpeakingResponse(
   examType: ExamType,
   question: Question | { title: string; prompt: string },
   transcript: string,
   userApiKey?: string
 ): Promise<EvaluationResult> {
-  // Thử gọi AI API trực tiếp nếu user có truyền apiKey
-  if (userApiKey && userApiKey.trim().length > 10) {
-    try {
-      const result = await evaluateWithOpenAIOrGemini(examType, question, transcript, userApiKey);
-      if (result) return result;
-    } catch (e) {
-      console.warn('Gặp lỗi khi gọi AI API thực tế, chuyển sang AI Engine thông minh tích hợp:', e);
+  const text = transcript.trim();
+  const isPlaceholder = text.startsWith('[Hệ thống') || text.startsWith('[No response') || text === 'Sample student response' || text.startsWith('[Thí sinh chưa');
+  const wordCount = (text && !isPlaceholder) ? text.split(/\s+/).filter(Boolean).length : 0;
+
+  // 1. Xử lý bài nói không có âm thanh / 0 từ
+  if (wordCount === 0) {
+    if (examType === 'TOEIC') {
+      return {
+        overallScore: 0,
+        bandOrLevel: 'Level 0 (0/200 điểm)',
+        summaryFeedback: 'Hệ thống không nhận diện được âm thanh hoặc bạn chưa phát biểu (0 từ). Bài thi nhận 0/200 điểm theo quy chuẩn.',
+        criteria: [
+          { name: 'Phát âm & Trọng âm', englishName: 'Pronunciation & Stress', score: 0, maxScore: 10, comment: 'Chưa nhận diện được âm thanh.' },
+          { name: 'Từ vựng & Cấu trúc Ngữ pháp', englishName: 'Grammar & Vocabulary', score: 0, maxScore: 10, comment: 'Chưa nhận diện được âm thanh.' },
+          { name: 'Độ trôi chảy & Tương tác', englishName: 'Fluency & Coherence', score: 0, maxScore: 10, comment: 'Chưa nhận diện được âm thanh.' },
+          { name: 'Độ phù hợp & Nội dung', englishName: 'Relevance & Completeness', score: 0, maxScore: 10, comment: 'Chưa nhận diện được âm thanh.' }
+        ],
+        pronunciationIssues: [],
+        grammarFixes: [],
+        actionableAdvice: [
+          'Vui lòng bật microphone và phát biểu rõ ràng vào micro.',
+          'Kiểm tra quyền cho phép truy cập micro trong cài đặt trình duyệt của bạn.'
+        ],
+        sampleAnswer: getEffectiveSpeakingSampleAnswer(examType, question),
+        transcript: '[Thí sinh chưa thực hiện phần thu âm / 0 từ]'
+      };
+    } else {
+      return {
+        overallScore: 0,
+        bandOrLevel: 'Band 0.0',
+        summaryFeedback: 'Hệ thống không nhận diện được âm thanh hoặc bạn chưa phát biểu (0 từ). Bài thi nhận Band 0.0 theo chuẩn IELTS.',
+        criteria: [
+          { name: 'Độ lưu loát & Mạch lạc', englishName: 'Fluency and Coherence (FC)', score: 0, maxScore: 9, comment: 'Chưa nhận diện được âm thanh.' },
+          { name: 'Vốn từ vựng', englishName: 'Lexical Resource (LR)', score: 0, maxScore: 9, comment: 'Chưa nhận diện được âm thanh.' },
+          { name: 'Ngữ pháp & Độ chính xác', englishName: 'Grammatical Range and Accuracy (GRA)', score: 0, maxScore: 9, comment: 'Chưa nhận diện được âm thanh.' },
+          { name: 'Phát âm & Ngữ điệu', englishName: 'Pronunciation (P)', score: 0, maxScore: 9, comment: 'Chưa nhận diện được âm thanh.' }
+        ],
+        pronunciationIssues: [],
+        grammarFixes: [],
+        actionableAdvice: [
+          'Vui lòng bật microphone và phát biểu rõ ràng vào micro.',
+          'Kiểm tra lại thiết bị thu âm trước khi làm bài thi.'
+        ],
+        sampleAnswer: getEffectiveSpeakingSampleAnswer(examType, question),
+        transcript: '[Thí sinh chưa thực hiện phần thu âm / 0 từ]'
+      };
     }
   }
 
-  // AI Engine Giả lập Thông minh dựa trên NLP & phân tích văn bản thực tế
-  return simulateSmartEvaluation(examType, question, transcript);
+  // 2. Thử gọi API nếu có apiKey
+  if (userApiKey && userApiKey.trim().length > 10) {
+    try {
+      const result = await evaluateWithOpenAIOrGemini(examType, question, text, userApiKey);
+      if (result) return result;
+    } catch (e) {
+      console.warn('Gặp lỗi khi gọi AI API thực tế, chuyển sang Real-Transcript NLP Evaluator:', e);
+    }
+  }
+
+  // 3. Phân tích thực tế bản ghi giọng nói bài nói của thí sinh
+  return analyzeRealSpeakingTranscript(examType, question, text, wordCount);
 }
 
-// Hàm giả lập phân tích NLP thông minh theo 4 tiêu chí + Sửa lỗi + Phát âm + Gợi ý Tiếng Việt
-function simulateSmartEvaluation(
+// Phân tích thực tế bản ghi bài nói (NLP Real Transcript Analyzer)
+function analyzeRealSpeakingTranscript(
   examType: ExamType,
   question: Question | { title: string; prompt: string },
-  transcript: string
+  text: string,
+  wordCount: number
 ): EvaluationResult {
-  const text = transcript.trim();
-  const wordCount = text ? text.split(/\s+/).length : 0;
+  const rawSentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
+  const words = text.toLowerCase().match(/\b[a-z']+\b/g) || [];
+  const uniqueWords = new Set(words);
+  const lexicalDiversity = words.length > 0 ? (uniqueWords.size / words.length) : 0;
+
+  // A. Phân tích lỗi ngữ pháp thực tế từ bài phát biểu
+  const grammarFixes: { original: string; corrected: string; explanation: string }[] = [];
+
+  rawSentences.forEach((sentence) => {
+    const trimmed = sentence.trim();
+
+    // 1. Phân tích lỗi "am agree" / "am disagree"
+    if (/\bi\s+am\s+(agree|disagree)\b/i.test(trimmed)) {
+      const fixed = trimmed.replace(/\bi\s+am\s+(agree|disagree)\b/i, (_, v) => `I strongly ${v}`);
+      grammarFixes.push({
+        original: trimmed,
+        corrected: fixed,
+        explanation: 'Trong tiếng Anh dùng động từ "agree/disagree" trực tiếp (I agree), không dùng "I am agree".'
+      });
+    }
+
+    // 2. Phân tích lỗi dùng giới từ "in 2 years ago"
+    if (/\bin\s+\d+\s+years?\s+ago\b/i.test(trimmed)) {
+      const fixed = trimmed.replace(/\bin\s+(\d+\s+years?\s+ago)\b/i, '$1');
+      grammarFixes.push({
+        original: trimmed,
+        corrected: fixed,
+        explanation: 'Không dùng giới từ "in" trước các cụm chỉ thời gian có từ "ago".'
+      });
+    }
+
+    // 3. Phân tích lỗi "learn me" thay cho "teach me"
+    if (/\blearn\s+me\b/i.test(trimmed)) {
+      const fixed = trimmed.replace(/\blearn\s+me\b/i, 'teach me');
+      grammarFixes.push({
+        original: trimmed,
+        corrected: fixed,
+        explanation: 'Động từ dạy học cho ai đó là "teach me", không phải "learn me".'
+      });
+    }
+
+    // 4. Phân tích chủ ngữ số ít đi với động từ nguyên mẫu
+    const svMatch = trimmed.match(/\b(he|she|it|this|that|everyone)\s+(make|take|help|give|need|want|allow|cause|show|lead|provide)\b/i);
+    if (svMatch) {
+      const sub = svMatch[1];
+      const verb = svMatch[2];
+      const fixedVerb = verb.endsWith('e') ? verb + 's' : verb + 'es';
+      grammarFixes.push({
+        original: svMatch[0],
+        corrected: `${sub} ${fixedVerb}`,
+        explanation: `Chủ ngữ số ít "${sub}" đi với động từ chia thì hiện tại đơn cần chia thành "${fixedVerb}".`
+      });
+    }
+  });
+
+  // B. Trích xuất các từ phát âm / từ vựng cần lưu ý từ CHÍNH bài nói của học viên
+  const pronunciationIssues: { word: string; correctIpa: string; userSpoken?: string; issueType: 'mispronounced' | 'stress_error' | 'intonation'; advice: string }[] = [];
+  const ipaCheckList: Record<string, { ipa: string; advice: string }> = {
+    'approximately': { ipa: '/əˈprɒk.sɪ.mət.li/', advice: 'Trọng âm rơi vào âm tiết thứ 2 (prok).' },
+    'environment': { ipa: '/ɪnˈvaɪ.rən.mənt/', advice: 'Chú ý phát âm âm tiết thứ 2 /vaɪ/ và âm đuôi /-mənt/.' },
+    'technology': { ipa: '/tekˈnɒl.ə.dʒi/', advice: 'Trọng âm chính rơi vào âm tiết thứ 2 (NOL).' },
+    'important': { ipa: '/ɪmˈpɔː.tənt/', advice: 'Chú ý âm đuôi /-tənt/, tránh đọc phẳng âm.' },
+    'especially': { ipa: '/ɪˈspeʃ.əl.i/', advice: 'Phát âm rõ âm đầu /ɪ/ và âm /ʃ/.' },
+    'government': { ipa: '/ˈɡʌv.ən.mənt/', advice: 'Chú ý trọng âm rơi vào âm tiết đầu tiên (GOV).' },
+    'opportunity': { ipa: '/ˌɒp.əˈtʃuː.nə.ti/', advice: 'Trọng âm chính rơi vào âm tiết thứ 3 (TU).' },
+    'development': { ipa: '/dɪˈvel.əp.mənt/', advice: 'Trọng âm chính rơi vào âm tiết thứ 2 (VEL).' }
+  };
+
+  words.forEach((w) => {
+    if (ipaCheckList[w] && pronunciationIssues.length < 3) {
+      pronunciationIssues.push({
+        word: w,
+        correctIpa: ipaCheckList[w].ipa,
+        userSpoken: `${w}`,
+        issueType: 'stress_error',
+        advice: ipaCheckList[w].advice
+      });
+    }
+  });
+
+  // C. Tính toán điểm số trôi chảy & từ vựng thực tế
+  let hasFillers = /\b(uhm|ah|err|like|you know)\b/i.test(text);
+  let hasConnectors = /\b(firstly|secondly|furthermore|however|therefore|on top of that|in addition)\b/i.test(text);
 
   if (examType === 'TOEIC') {
-    // TOEIC Scale: 0 - 200
-    // Tính toán dựa trên độ dài, tính phong phú của từ vựng và cấu trúc
-    let baseScore = 130;
-    if (wordCount < 15) baseScore = 80;
-    else if (wordCount < 30) baseScore = 120;
-    else if (wordCount < 60) baseScore = 150;
-    else if (wordCount < 100) baseScore = 175;
-    else baseScore = 190;
+    let score = 160;
+    if (wordCount < 10) score = 40;
+    else if (wordCount < 25) score = 80;
+    else if (wordCount < 50) score = 120;
+    else if (wordCount < 90) score = 150;
+    else score = 180;
 
-    // Thêm yếu tố ngẫu nhiên nhỏ ±10 để tạo sự sinh động
-    const overallScore = Math.min(200, Math.max(50, baseScore + Math.floor(Math.random() * 10 - 5)));
-
-    let levelStr = 'Level 5 (110 - 120/200)';
-    if (overallScore >= 190) levelStr = 'Level 8 (190 - 200/200)';
-    else if (overallScore >= 160) levelStr = 'Level 7 (160 - 180/200)';
-    else if (overallScore >= 130) levelStr = 'Level 6 (130 - 150/200)';
+    let levelStr = 'Level 7 (160 - 180/200)';
+    if (score >= 190) levelStr = 'Level 8 (190 - 200/200)';
+    else if (score >= 160) levelStr = 'Level 7 (160 - 180/200)';
+    else if (score >= 130) levelStr = 'Level 6 (130 - 150/200)';
+    else if (score >= 80) levelStr = 'Level 4 (80 - 100/200)';
+    else levelStr = 'Level 2 (40/200 điểm)';
 
     return {
-      overallScore,
+      overallScore: score,
       bandOrLevel: levelStr,
-      summaryFeedback: `Bài nói TOEIC của bạn đạt mức **${overallScore}/200** (${levelStr}). Bạn có phản xạ trả lời khá tự nhiên, nội dung đi đúng trọng tâm yêu cầu của đề bài. Cần chú ý thêm về trọng âm từ multi-syllable và sử dụng nối âm mượt mà hơn.`,
+      summaryFeedback: `Bài nói TOEIC của bạn gồm **${wordCount} từ** (${rawSentences.length} câu) đạt **${score}/200** (${levelStr}). ${
+        wordCount < 30
+          ? 'Bài nói còn rất ngắn, bạn cần mở rộng thêm ý tưởng và phát biểu liên tục hơn.'
+          : `Tốc độ phản xạ bài nói ổn định với chỉ số từ vựng đạt ${(lexicalDiversity * 100).toFixed(0)}%.`
+      }`,
       criteria: [
-        {
-          name: 'Phát âm & Trọng âm',
-          englishName: 'Pronunciation & Stress',
-          score: Math.min(10, Math.floor(overallScore / 20) + (wordCount > 30 ? 1 : 0)),
-          maxScore: 10,
-          comment: 'Phát âm tương đối rõ ràng. Cần chú ý các âm cuối (ending sounds like /s/, /t/, /ed/) và trọng âm của các từ dài.'
-        },
-        {
-          name: 'Từ vựng & Cấu trúc Ngữ pháp',
-          englishName: 'Grammar & Vocabulary',
-          score: Math.min(10, Math.floor(overallScore / 20)),
-          maxScore: 10,
-          comment: 'Sử dụng từ vựng phù hợp ngữ cảnh công sở. Hãy cố gắng áp dụng thêm các liên từ kết nối như "Furthermore", "In addition", "Therefore".'
-        },
-        {
-          name: 'Độ trôi chảy & Tương tác',
-          englishName: 'Fluency & Coherence',
-          score: Math.min(10, Math.floor(overallScore / 20) + 1),
-          maxScore: 10,
-          comment: 'Tốc độ nói ổn định, ngắt nghỉ hợp lý giữa các vế câu. Tránh lặp từ "uhm", "ah" bằng các filler phrases tự nhiên như "Well, to be honest...".'
-        },
-        {
-          name: 'Độ phù hợp & Nội dung',
-          englishName: 'Relevance & Completeness',
-          score: Math.min(10, Math.floor(overallScore / 20)),
-          maxScore: 10,
-          comment: 'Câu trả lời trực tiếp vào trọng tâm, giải thích lý do rõ ràng. Hãy mở rộng thêm 1 ví dụ cụ thể để bài nói thuyết phục hơn.'
-        }
+        { name: 'Phát âm & Trọng âm', englishName: 'Pronunciation & Stress', score: Math.min(10, Math.floor(score / 20)), maxScore: 10, comment: pronunciationIssues.length > 0 ? `Cần lưu ý trọng âm các từ: ${pronunciationIssues.map(p => p.word).join(', ')}.` : 'Phát âm rõ nghĩa, dễ nghe.' },
+        { name: 'Từ vựng & Cấu trúc Ngữ pháp', englishName: 'Grammar & Vocabulary', score: Math.min(10, Math.floor(score / 20)), maxScore: 10, comment: grammarFixes.length > 0 ? `Đã phát hiện ${grammarFixes.length} lỗi ngữ pháp trong bài nói.` : 'Cấu trúc câu chính xác.' },
+        { name: 'Độ trôi chảy & Tương tác', englishName: 'Fluency & Coherence', score: Math.min(10, Math.floor(score / 20)), maxScore: 10, comment: hasFillers ? 'Tránh ngập ngừng lặp từ "uhm", "ah" bằng các filler phrases tự nhiên.' : 'Dòng phát biểu trôi chảy.' },
+        { name: 'Độ phù hợp & Nội dung', englishName: 'Relevance & Completeness', score: Math.min(10, Math.floor(score / 20)), maxScore: 10, comment: wordCount < 30 ? 'Cần phát triển câu trả lời dài hơn.' : 'Nội dung trả lời đi đúng trọng tâm đề bài.' }
       ],
-      pronunciationIssues: [
-        {
-          word: 'approximately',
-          correctIpa: '/əˈprɒk.sɪ.mət.li/',
-          userSpoken: 'ap-pro-xi-mate-li',
-          issueType: 'stress_error',
-          advice: 'Trọng âm rơi vào âm tiết thứ 2 (prok). Tránh đọc kéo dài âm mate.'
-        },
-        {
-          word: 'inspection',
-          correctIpa: '/ɪnˈspek.ʃən/',
-          userSpoken: 'in-spec-tion',
-          issueType: 'mispronounced',
-          advice: 'Chú ý âm đuôi /-ʃən/ cong lưỡi thay vì đọc phẳng âm "sơn".'
-        },
-        {
-          word: 'appliances',
-          correctIpa: '/əˈplaɪ.ən.sɪz/',
-          userSpoken: 'ap-plian-ces',
-          issueType: 'stress_error',
-          advice: 'Trọng âm rơi vào âm tiết thứ 2 (pli).'
-        }
-      ],
-      grammarFixes: [
-        {
-          original: text.length > 20 ? text.slice(0, 45) + '...' : 'I am agree with this opinion because...',
-          corrected: 'I strongly agree with this opinion because...',
-          explanation: 'Dùng phó từ "strongly agree" thay vì "am agree" để câu đúng cấu trúc ngữ pháp.'
-        },
-        {
-          original: 'It help me save many times.',
-          corrected: 'It helps me save a lot of time.',
-          explanation: '"Time" trong ngữ cảnh thời gian là danh từ không đếm được, dùng "a lot of time" thay vì "many times".'
-        }
-      ],
+      pronunciationIssues,
+      grammarFixes,
       actionableAdvice: [
-        'Luyện tập đọc to thành tiếng các đoạn văn bản tin tức công sở hằng ngày 15 phút để tăng độ mượt.',
-        'Nhấn mạnh vào từ chìa khóa (Keywords: Nouns, Verbs, Adjectives) và hạ giọng nhẹ ở cuối câu khẳng định.',
-        'Sử dụng công thức PREP (Point - Reason - Example - Point) khi trả lời TOEIC Part 5.'
+        wordCount < 30 ? 'Luyện tập phát biểu liên tục 45-60 giây mà không dừng lại quá lâu.' : 'Duy trì tốc độ phát biểu ổn định.',
+        'Sử dụng công thức A.R.E.A (Answer - Reason - Example) để mở rộng câu trả lời.'
       ],
-      sampleAnswer: (question as Question).sampleAnswer || 'In my opinion, working in a flexible environment offers great advantages...',
-      transcript: text || '[Hệ thống chưa nhận diện được âm thanh rõ ràng. Bạn vui lòng thử lại microphone.]'
+      sampleAnswer: getEffectiveSpeakingSampleAnswer(examType, question),
+      transcript: text
     };
   } else {
-    // IELTS Scale: 0.0 - 9.0 (bước 0.5)
-    let rawBand = 6.0;
-    if (wordCount < 20) rawBand = 5.0;
-    else if (wordCount < 40) rawBand = 5.5;
-    else if (wordCount < 80) rawBand = 6.5;
-    else if (wordCount < 120) rawBand = 7.5;
-    else rawBand = 8.0;
+    // IELTS Speaking Scale
+    let fc = 6.0; let lr = 6.0; let gra = 6.0; let p = 6.0;
 
-    const overallScore = Math.min(9.0, Math.max(4.0, rawBand));
-    const bandStr = `Band ${overallScore.toFixed(1)}`;
+    if (wordCount < 10) {
+      fc = 2.5; lr = 2.5; gra = 2.5; p = 2.5;
+    } else if (wordCount < 25) {
+      fc = 4.0; lr = 4.0; gra = 4.0; p = 4.0;
+    } else if (wordCount < 50) {
+      fc = 5.5; lr = 5.5; gra = 5.5; p = 5.5;
+    } else if (wordCount < 90) {
+      fc = 6.5; lr = 6.5; gra = 6.5; p = 6.5;
+    } else {
+      fc = hasConnectors ? 7.5 : 6.5;
+      lr = lexicalDiversity > 0.45 ? 7.5 : 6.5;
+      gra = grammarFixes.length === 0 ? 7.5 : 6.5;
+      p = pronunciationIssues.length === 0 ? 7.5 : 6.5;
+    }
+
+    const overallBand = Math.round(((fc + lr + gra + p) / 4) * 2) / 2;
+    const bandStr = `Band ${overallBand.toFixed(1)}`;
 
     return {
-      overallScore,
+      overallScore: overallBand,
       bandOrLevel: bandStr,
-      summaryFeedback: `Bài nói IELTS của bạn đạt **${bandStr}**. Bạn có khả năng phát triển ý tưởng linh hoạt và giao tiếp rõ ràng. Để chinh phục Band 8.0+, hãy áp dụng thêm các cụm Idioms/Collocations nâng cao và đa dạng hóa các câu phức (Complex Sentences).`,
+      summaryFeedback: `Bài nói IELTS của bạn gồm **${wordCount} từ** (${rawSentences.length} câu) đạt **${bandStr}**. ${
+        wordCount < 30
+          ? 'Bài nói rất ngắn, bạn bị trừ điểm tiêu chí Fluency & Coherence.'
+          : `Khả năng diễn đạt tự nhiên, chỉ số phong phú từ vựng đạt ${(lexicalDiversity * 100).toFixed(0)}%.`
+      }`,
       criteria: [
-        {
-          name: 'Độ lưu loát & Mạch lạc',
-          englishName: 'Fluency and Coherence (FC)',
-          score: Math.min(9, overallScore + 0.5),
-          maxScore: 9,
-          comment: 'Nói liên tục không bị vấp ngắt quãng quá lâu. Sử dụng tốt các từ nối tự nhiên như "Having said that", "On top of that".'
-        },
-        {
-          name: 'Vốn từ vựng',
-          englishName: 'Lexical Resource (LR)',
-          score: Math.min(9, overallScore),
-          maxScore: 9,
-          comment: 'Sử dụng từ vựng đa dạng đúng chủ đề. Cần bổ sung thêm các Collocations tự nhiên thay cho các từ đơn lẻ thông dụng.'
-        },
-        {
-          name: 'Ngữ pháp & Độ chính xác',
-          englishName: 'Grammatical Range and Accuracy (GRA)',
-          score: Math.min(9, overallScore - 0.5 >= 5 ? overallScore - 0.5 : overallScore),
-          maxScore: 9,
-          comment: 'Cấu trúc câu phong phú, kết hợp giữa câu đơn và câu ghép. Chú ý thì quá khứ đơn và sự hòa hợp giữa chủ ngữ - động từ.'
-        },
-        {
-          name: 'Phát âm & Ngữ điệu',
-          englishName: 'Pronunciation (P)',
-          score: Math.min(9, overallScore),
-          maxScore: 9,
-          comment: 'Phát âm rõ nghĩa, người nghe dễ dàng theo dõi. Cần cải thiện intonation (ngữ điệu trầm bổng) để bài nói tự nhiên hơn.'
-        }
+        { name: 'Độ lưu loát & Mạch lạc', englishName: 'Fluency and Coherence (FC)', score: fc, maxScore: 9, comment: hasConnectors ? 'Nói trôi chảy có liên từ liên kết.' : 'Nên sử dụng từ nối tự nhiên như "Having said that", "On top of that".' },
+        { name: 'Vốn từ vựng', englishName: 'Lexical Resource (LR)', score: lr, maxScore: 9, comment: `Đa dạng từ vựng đạt ${(lexicalDiversity * 100).toFixed(0)}%.` },
+        { name: 'Ngữ pháp & Độ chính xác', englishName: 'Grammatical Range and Accuracy (GRA)', score: gra, maxScore: 9, comment: grammarFixes.length > 0 ? `Cần chú ý ${grammarFixes.length} lỗi ngữ pháp trong bài nói.` : 'Sử dụng tốt các cấu trúc câu.' },
+        { name: 'Phát âm & Ngữ điệu', englishName: 'Pronunciation (P)', score: p, maxScore: 9, comment: pronunciationIssues.length > 0 ? `Chú ý trọng âm các từ: ${pronunciationIssues.map(pi => pi.word).join(', ')}.` : 'Phát âm rõ nghĩa.' }
       ],
-      pronunciationIssues: [
-        {
-          word: 'vibrant',
-          correctIpa: '/ˈvaɪ.brənt/',
-          userSpoken: 'vi-brant',
-          issueType: 'mispronounced',
-          advice: 'Âm đầu đọc là /vaɪ/ (gần như "vai") chứ không phải /vɪ/ ("vi").'
-        },
-        {
-          word: 'infrastructure',
-          correctIpa: '/ˈɪn.frəˌstrʌk.tʃər/',
-          userSpoken: 'in-fra-struc-ture',
-          issueType: 'stress_error',
-          advice: 'Trọng âm chính rơi vào âm tiết đầu tiên (IN).'
-        },
-        {
-          word: 'pedagogy',
-          correctIpa: '/ˈped.ə.ɡɒdʒ.i/',
-          userSpoken: 'pe-da-go-gy',
-          issueType: 'mispronounced',
-          advice: 'Chú ý âm đuôi /-ɡɒdʒ.i/.'
-        }
-      ],
-      grammarFixes: [
-        {
-          original: 'I met him in 2 years ago and he learn me many things.',
-          corrected: 'I met him 2 years ago and he taught me many things.',
-          explanation: 'Không dùng giới từ "in" trước "2 years ago". Động từ dạy học là "teach" (quá khứ "taught"), không dùng "learn".'
-        },
-        {
-          original: 'It is very important for young people.',
-          corrected: 'It is of paramount importance for the younger generation.',
-          explanation: 'Nâng cấp từ vựng Band 8.0: thay "very important" bằng "of paramount importance".'
-        }
-      ],
+      pronunciationIssues,
+      grammarFixes,
       actionableAdvice: [
-        'Tập trung luyện tập phát triển câu trả lời theo mô hình A.R.E.A (Answer - Reason - Example - Alternative).',
-        'Thực hành ghi âm bài nói 2 phút IELTS Part 2 hằng ngày và nghe lại để tự phát hiện lỗi ngắt quãng.',
-        'Tra cứu phiên âm IPA chuẩn Oxford/Cambridge cho các từ vựng mới học.'
+        'Tập trung phát triển câu trả lời theo mô hình A.R.E.A (Answer - Reason - Example).',
+        'Thực hành ghi âm bài nói 2 phút hằng ngày và nghe lại để tự phát hiện lỗi ngắt quãng.'
       ],
-      sampleAnswer: (question as Question).sampleAnswer || 'I would like to elaborate on this fascinating subject...',
-      transcript: text || '[Hệ thống nhận diện chưa có bản thu âm đầy đủ. Bạn vui lòng thử thu âm lại.]'
+      sampleAnswer: getEffectiveSpeakingSampleAnswer(examType, question),
+      transcript: text
     };
   }
 }
 
-// Gọi API OpenAI/Gemini nếu được cung cấp key
 async function evaluateWithOpenAIOrGemini(
   examType: ExamType,
   question: Question | { title: string; prompt: string },
   transcript: string,
   apiKey: string
 ): Promise<EvaluationResult | null> {
-  const promptText = `Bạn là một Giám khảo chấm thi Speaking ${examType} chuyên nghiệp. Hãy chấm điểm bài nói tiếng Anh sau đây của học viên và trả về thông tin JSON hoàn toàn bằng Tiếng Việt.
+  const promptText = `Bạn là Giám khảo chấm thi Speaking ${examType} quốc tế chuyên nghiệp. Hãy chấm điểm THỰC TẾ bản ghi âm bài nói sau đây của thí sinh theo đúng tiêu chuẩn chính thức:
 
 Đề bài (${examType}):
 Tiêu đề: ${question.title}
 Yêu cầu: ${question.prompt}
 
-Bản ghi bài nói của học viên (Transcript):
+Bản ghi bài nói THỰC TẾ của học viên:
 "${transcript}"
+
+QUY TẮC RẤT QUAN TRỌNG:
+1. CHỈ trích dẫn và sửa các câu THỰC TẾ xuất hiện trong bản ghi của học viên trong mục "grammarFixes". TUYỆT ĐỐI không đưa ra câu ví dụ mẫu không có trong bài thi của học viên.
+2. CHỈ chỉ ra lỗi phát âm / trọng âm của các từ THỰC TẾ xuất hiện trong bản ghi của học viên trong mục "pronunciationIssues".
 
 Hãy đánh giá và trả về kết quả cấu trúc JSON như sau:
 {
-  "overallScore": ${examType === 'TOEIC' ? '170' : '7.5'},
-  "bandOrLevel": "${examType === 'TOEIC' ? 'Level 7 (170/200)' : 'Band 7.5'}",
+  "overallScore": <DIEM_THUC_TE>,
+  "bandOrLevel": "<CUM_TU_DIEM_VD_Band_6.5_hoac_Level_7>",
   "summaryFeedback": "Nhận xét tổng quan bằng Tiếng Việt",
   "criteria": [
-    { "name": "Tên tiêu chí Tiếng Việt", "englishName": "Tên tiếng Anh", "score": 8, "maxScore": ${examType === 'TOEIC' ? 10 : 9}, "comment": "Nhận xét chi tiết tiếng Việt" }
+    { "name": "Tên tiêu chí Tiếng Việt", "englishName": "Tên tiếng Anh", "score": <DIEM_TIEU_CHI>, "maxScore": ${examType === 'TOEIC' ? 10 : 9}, "comment": "Nhận xét chi tiết tiếng Việt" }
   ],
   "pronunciationIssues": [
-    { "word": "từ phát âm chưa chuẩn", "correctIpa": "/IPA/", "userSpoken": "cách đọc của user", "issueType": "mispronounced", "advice": "Hướng dẫn sửa" }
+    { "word": "từ THỰC TẾ trong bài của học viên", "correctIpa": "/IPA/", "userSpoken": "cách đọc", "issueType": "mispronounced", "advice": "Hướng dẫn sửa" }
   ],
   "grammarFixes": [
-    { "original": "câu gốc sai", "corrected": "câu đã sửa chuẩn", "explanation": "Giải thích lỗi tiếng Việt" }
+    { "original": "câu gốc sai THỰC TẾ của học viên", "corrected": "câu đã sửa chuẩn", "explanation": "Giải thích lỗi tiếng Việt" }
   ],
   "actionableAdvice": ["Lời khuyên 1", "Lời khuyên 2"],
   "sampleAnswer": "Bài mẫu hoàn hảo tiếng Anh"
 }`;
 
-  // Call OpenAI endpoint
+  // Support Google Gemini API Key
+  if (apiKey.startsWith('AIza')) {
+    try {
+      const geminiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: promptText + "\n\nTRẢ VỀ DUY NHẤT MỘT CHUỖI JSON HỢP LỆ, KHÔNG BAO GỒM MARKDOWN CODEBLOCK." }] }]
+          })
+        }
+      );
+      if (geminiRes.ok) {
+        const data = await geminiRes.json();
+        const textResp = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const cleanJson = textResp.replace(/```json/gi, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(cleanJson);
+        return {
+          ...parsed,
+          transcript
+        };
+      }
+    } catch (err) {
+      console.warn('Lỗi khi gọi Gemini API cho Speaking, chuyển sang OpenAI/Fallback:', err);
+    }
+  }
+
+  // OpenAI API Key
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {

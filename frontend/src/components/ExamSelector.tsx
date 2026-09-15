@@ -23,7 +23,7 @@ interface ExamSelectorProps {
 }
 
 export const ExamSelector: React.FC<ExamSelectorProps> = ({ onStartExam, onStartFullExam }) => {
-  const { user } = useAuth();
+  const { user, updateApiKey } = useAuth();
   const [examType, setExamType] = useState<ExamType>('TOEIC');
   const [selectedPart, setSelectedPart] = useState<number | 'all'>('all');
   const [activeMode, setActiveMode] = useState<'preset' | 'custom' | 'ai_gen'>('preset');
@@ -59,7 +59,7 @@ export const ExamSelector: React.FC<ExamSelectorProps> = ({ onStartExam, onStart
       prompt: customPrompt.trim(),
       prepTimeSeconds: customPrepTime,
       responseTimeSeconds: customResponseTime,
-      sampleAnswer: 'Sample answer will be generated based on your topic during evaluation.'
+      sampleAnswer: `In my opinion, addressing ${customTitle.trim() || 'this question'} requires a balanced and proactive approach. Firstly, clear communication and careful planning are essential for achieving success. Secondly, continuous practice and leveraging modern tools significantly enhance performance. Overall, staying focused and committed yields optimal outcomes.`
     };
     onStartExam(customQ);
   };
@@ -143,11 +143,11 @@ export const ExamSelector: React.FC<ExamSelectorProps> = ({ onStartExam, onStart
         </div>
       </div>
 
-      {/* FULL MOCK TEST PROMINENT BANNER */}
+      {/* FULL EXAM TEST PROMINENT BANNER */}
       <div className="bg-gradient-to-r from-amber-950/60 via-slate-900 to-amber-950/60 border border-amber-500/40 rounded-3xl p-6 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-6">
         <div className="space-y-1 text-center sm:text-left">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold">
-            <Trophy className="w-4 h-4 text-amber-400" /> THI THỬ FULL ĐỀ THI LẦN LƯỢT (FULL MOCK TEST)
+            <Trophy className="w-4 h-4 text-amber-400" /> THI THỬ FULL ĐỀ THI LẦN LƯỢT (FULL EXAM TEST)
           </div>
           <h2 className="text-xl sm:text-2xl font-extrabold text-white">
             Thi Thử Trọn Bộ Full Đề {examType} Speaking ({examType === 'TOEIC' ? '5 Parts' : '3 Parts'})
@@ -337,6 +337,26 @@ export const ExamSelector: React.FC<ExamSelectorProps> = ({ onStartExam, onStart
               />
             </div>
 
+            {/* API Key Input Section for Real AI Generation */}
+            <div className="bg-purple-950/40 border border-purple-500/30 p-4 rounded-2xl space-y-2">
+              <label className="block text-xs font-bold text-purple-300 flex items-center justify-between">
+                <span>🔑 OpenAI / AI API Key (Tùy chọn cho AI thực tế):</span>
+                <span className="text-[10px] text-purple-400 font-normal">
+                  {user?.apiKey ? '✅ Đã lưu API Key' : 'Tự động tạo hoặc dùng API Key riêng'}
+                </span>
+              </label>
+              <input
+                type="password"
+                placeholder="Nhập sk-... (OpenAI / Gemini API Key) để AI tạo đề 100% thời gian thực"
+                value={user?.apiKey || ''}
+                onChange={(e) => updateApiKey(e.target.value)}
+                className="w-full bg-slate-950 border border-purple-500/40 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 font-mono focus:outline-none focus:border-purple-400"
+              />
+              <p className="text-[11px] text-slate-400">
+                💡 Khi nhập API Key, hệ thống sẽ kết nối trực tiếp đến mô hình LLM để tự động sáng tạo câu hỏi, bài mẫu & từ vựng hoàn toàn mới không rập khuôn.
+              </p>
+            </div>
+
             <button
               type="submit"
               disabled={isGenerating}
@@ -344,11 +364,11 @@ export const ExamSelector: React.FC<ExamSelectorProps> = ({ onStartExam, onStart
             >
               {isGenerating ? (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin" /> Đang Tạo Đề Thi Mới...
+                  <Loader2 className="w-5 h-5 animate-spin" /> AI Đang Tạo Đề Thi Speaking Mới...
                 </>
               ) : (
                 <>
-                  Tạo Đề Thi Mới & Vấn Đáp Ngay
+                  <Bot className="w-4 h-4" /> AI Tạo Đề Thi Mới & Vấn Đáp Ngay
                 </>
               )}
             </button>
